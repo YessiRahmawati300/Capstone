@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Water Monitoring System</title>
+
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+      * {
+        box-sizing: border-box;
+        font-family: "Segoe UI", sans-serif;
+      }
+
+      body {
+        margin: 0;
+        background: #0b1b2b;
+        color: white;
+        padding: 20px;
+      }
+
+      h1 {
+        text-align: center;
+        margin-bottom: 20px;
+      }
+
+      /* GRID */
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 16px;
+        max-width: 1200px;
+        margin: auto;
+      }
+
+      /* CARD */
+      .card {
+        background: #13263c;
+        border-radius: 14px;
+        padding: 16px;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+        padding: 28px 24px; /* ⬅️ ini yang bikin tidak nempel */
+
+        display: flex;
+        flex-direction: column;
+        align-items: center; /* tengah horizontal */
+        text-align: center;
+      }
+
+      .title {
+        opacity: 0.7;
+        font-size: 15px;
+        margin-bottom: 8px;
+      }
+
+      .value {
+        font-size: 30px; /* BESAR */
+        font-weight: bold;
+        margin-bottom: 10px;
+      }
+
+      /* SERVO STATUS */
+      .servoStatus {
+        margin-top: 8px;
+        font-size: 30px;
+        font-weight: bold;
+      }
+
+      /* LEAK */
+      .leak {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-weight: bold;
+        font-size: 22px;
+      }
+      .dot {
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+      }
+
+      /* CIRCLE */
+      .circle {
+        width: 120px;
+        height: 120px;
+        border-radius: 50%;
+        margin: 10px auto;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+        background: conic-gradient(#22c55e 0deg, #1e293b 0deg);
+      }
+      .circle::after {
+        content: "";
+        position: absolute;
+        width: 80px;
+        height: 80px;
+        background: #13263c;
+        border-radius: 50%;
+      }
+      .circle span {
+        position: absolute;
+        font-weight: bold;
+        font-size: 18px;
+      }
+
+      /* CHART */
+      .chart {
+        grid-column: span 2;
+      }
+      canvas {
+        width: 100% !important;
+        height: 260px !important;
+      }
+
+      /* RESPONSIVE */
+      @media (max-width: 900px) {
+        .grid {
+          grid-template-columns: repeat(2, 1fr);
+        }
+        .chart {
+          grid-column: span 2;
+        }
+      }
+      @media (max-width: 500px) {
+        .grid {
+          grid-template-columns: 1fr;
+        }
+        .chart {
+          grid-column: span 1;
+        }
+      }
+    </style>
+  </head>
+
+  <body>
+    <h1>Water Monitoring System</h1>
+
+    <div class="grid">
+      <!-- FLOW + SERVO -->
+      <div class="card">
+        <div class="title">Flow Rate & Valve Control</div>
+
+        <div class="value" id="flow">0 L/Min</div>
+
+        <input type="range" min="0" max="120" value="0" id="servoSlider" />
+
+        <div class="servoStatus" id="servoStatus">TERBUKA</div>
+      </div>
+
+      <!-- TOTAL -->
+      <div class="card">
+        <div class="title">Total Usage</div>
+        <div class="value" id="total">0 L</div>
+      </div>
+
+      <!-- LEAK -->
+      <div class="card">
+        <div class="title">Leak Status</div>
+        <div class="leak">
+          <div class="dot" id="leakDot"></div>
+          <div id="leakText">AMAN</div>
+        </div>
+      </div>
+
+      <!-- VOLUME -->
+      <div class="card">
+        <div class="title">Water Tank Level</div>
+
+        <div class="circle" id="volumeCircle">
+          <span id="volumePercent">0%</span>
+        </div>
+
+        <div class="value" id="volume">0 L</div>
+      </div>
+
+      <!-- FLOW GRAPH -->
+      <div class="card chart">
+        <div class="title">Grafik Debit Air</div>
+        <canvas id="flowChart"></canvas>
+      </div>
+
+      <!-- DAILY GRAPH -->
+      <div class="card chart">
+        <div class="title">Pemakaian Harian</div>
+        <canvas id="dailyChart"></canvas>
+      </div>
+    </div>
+
+    <script>
+      const firebaseConfig = {
+        apiKey: "AIzaSyDJ49rHT9avQxri-LXf4_Cr6flXmI-oc8s",
+        authDomain: "esp32-water-sensor.firebaseapp.com",
+        databaseURL:
+          "https://esp32-water-sensor-default-rtdb.asia-southeast1.firebasedatabase.app",
+        projectId: "esp32-water-sensor",
+      };
+
+      /* DOM */
+      const flowEl = document.getElementById("flow");
+      const totalEl = document.getElementById("total");
+      const volumeEl = document.getElementById("volume");
+      const volumePercent = document.getElementById("volumePercent");
+      const volumeCircle = document.getElementById("volumeCircle");
+      const leakText = document.getElementById("leakText");
+      const leakDot = document.getElementById("leakDot");
+      const servoSlider = document.getElementById("servoSlider");
+      const servoStatus = document.getElementById("servoStatus");
+
+      firebase.initializeApp(firebaseConfig);
+      const db = firebase.database();
+
+      /* ===== CHARTS ===== */
+      const flowChart = new Chart(document.getElementById("flowChart"), {
+        type: "line",
+        data: {
+          labels: [],
+          datasets: [{ data: [], borderWidth: 2, tension: 0.3 }],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: { x: { display: false } },
+        },
+      });
+
+      const dailyChart = new Chart(document.getElementById("dailyChart"), {
+        type: "bar",
+        data: {
+          labels: ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"],
+          datasets: [{ data: [0, 0, 0, 0, 0, 0, 0], borderWidth: 1 }],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: { y: { beginAtZero: true } },
+        },
+      });
+
+      /* ===== REALTIME ===== */
+      db.ref("water").on("value", (snap) => {
+        const d = snap.val();
+        if (!d) return;
+
+        const flow = d.flowRate || 0;
+        const total = d.totalUsed || 0;
+        const volume = d.volume || 0;
+        const servo = d.servoPos || 0;
+        const weekly = Array.isArray(d.weeklyUsage)
+          ? d.weeklyUsage
+          : [0, 0, 0, 0, 0, 0, 0];
+
+        /* TEXT */
+        flowEl.innerText = flow.toFixed(2) + " L/Min";
+        totalEl.innerText = total.toFixed(2) + " L";
+        volumeEl.innerText = volume.toFixed(2) + " L";
+
+        /* SERVO STATUS */
+        let status = "TERBUKA";
+        let color = "#22c55e";
+
+        if (servo >= 90) {
+          status = "TERTUTUP";
+          color = "#ef4444";
+        } else if (servo >= 45) {
+          status = "SETENGAH";
+          color = "#facc15";
+        }
+
+        servoStatus.innerText = `${status} (${servo}°)`;
+        servoStatus.style.color = color;
+        servoSlider.value = servo;
+
+        /* LEAK */
+        const bocor = flow > 0.1 && servo >= 90;
+        leakText.innerText = bocor ? "BOCOR" : "AMAN";
+        leakDot.style.background = bocor ? "#ff3b3b" : "#22c55e";
+
+        /* CIRCLE */
+        const maxVolume = 6.5;
+        const percent = Math.min((volume / maxVolume) * 100, 100);
+        volumePercent.innerText = percent.toFixed(0) + "%";
+        volumeCircle.style.background = `conic-gradient(#22c55e ${percent * 3.6}deg,#1e293b 0deg)`;
+
+        /* FLOW GRAPH */
+        flowChart.data.labels.push("");
+        flowChart.data.datasets[0].data.push(flow);
+        if (flowChart.data.labels.length > 20) {
+          flowChart.data.labels.shift();
+          flowChart.data.datasets[0].data.shift();
+        }
+        flowChart.update();
+
+        /* DAILY GRAPH */
+        dailyChart.data.datasets[0].data = weekly;
+        dailyChart.update();
+      });
+
+      /* ===== SLIDER CONTROL ===== */
+      servoSlider.addEventListener("input", () => {
+        db.ref("water/servoPos").set(parseInt(servoSlider.value));
+      });
+    </script>
+  </body>
+</html>
