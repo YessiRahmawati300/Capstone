@@ -27,7 +27,6 @@
         margin-bottom: 20px;
       }
 
-      /* GRID */
       .grid {
         display: grid;
         grid-template-columns: repeat(4, 1fr);
@@ -36,17 +35,15 @@
         margin: auto;
       }
 
-      /* CARD */
       .card {
         background: #13263c;
         border-radius: 14px;
         padding: 16px;
         box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
-        padding: 28px 24px; /* ⬅️ ini yang bikin tidak nempel */
-
+        padding: 28px 24px;
         display: flex;
         flex-direction: column;
-        align-items: center; /* tengah horizontal */
+        align-items: center;
         text-align: center;
       }
 
@@ -57,19 +54,17 @@
       }
 
       .value {
-        font-size: 30px; /* BESAR */
+        font-size: 30px;
         font-weight: bold;
         margin-bottom: 10px;
       }
 
-      /* SERVO STATUS */
       .servoStatus {
         margin-top: 8px;
         font-size: 30px;
         font-weight: bold;
       }
 
-      /* LEAK */
       .leak {
         display: flex;
         align-items: center;
@@ -77,13 +72,13 @@
         font-weight: bold;
         font-size: 22px;
       }
+
       .dot {
         width: 14px;
         height: 14px;
         border-radius: 50%;
       }
 
-      /* CIRCLE */
       .circle {
         width: 120px;
         height: 120px;
@@ -95,6 +90,7 @@
         position: relative;
         background: conic-gradient(#22c55e 0deg, #1e293b 0deg);
       }
+
       .circle::after {
         content: "";
         position: absolute;
@@ -103,22 +99,22 @@
         background: #13263c;
         border-radius: 50%;
       }
+
       .circle span {
         position: absolute;
         font-weight: bold;
         font-size: 18px;
       }
 
-      /* CHART */
       .chart {
         grid-column: span 2;
       }
+
       canvas {
         width: 100% !important;
         height: 260px !important;
       }
 
-      /* RESPONSIVE */
       @media (max-width: 900px) {
         .grid {
           grid-template-columns: repeat(2, 1fr);
@@ -127,6 +123,7 @@
           grid-column: span 2;
         }
       }
+
       @media (max-width: 500px) {
         .grid {
           grid-template-columns: 1fr;
@@ -142,24 +139,18 @@
     <h1>Water Monitoring System</h1>
 
     <div class="grid">
-      <!-- FLOW + SERVO -->
       <div class="card">
         <div class="title">Flow Rate & Valve Control</div>
-
         <div class="value" id="flow">0 L/Min</div>
-
         <input type="range" min="0" max="120" value="0" id="servoSlider" />
-
         <div class="servoStatus" id="servoStatus">TERBUKA</div>
       </div>
 
-      <!-- TOTAL -->
       <div class="card">
         <div class="title">Total Usage</div>
         <div class="value" id="total">0 L</div>
       </div>
 
-      <!-- LEAK -->
       <div class="card">
         <div class="title">Leak Status</div>
         <div class="leak">
@@ -168,24 +159,19 @@
         </div>
       </div>
 
-      <!-- VOLUME -->
       <div class="card">
         <div class="title">Water Tank Level</div>
-
         <div class="circle" id="volumeCircle">
           <span id="volumePercent">0%</span>
         </div>
-
         <div class="value" id="volume">0 L</div>
       </div>
 
-      <!-- FLOW GRAPH -->
       <div class="card chart">
         <div class="title">Grafik Debit Air</div>
         <canvas id="flowChart"></canvas>
       </div>
 
-      <!-- DAILY GRAPH -->
       <div class="card chart">
         <div class="title">Pemakaian Harian</div>
         <canvas id="dailyChart"></canvas>
@@ -201,7 +187,6 @@
         projectId: "esp32-water-sensor",
       };
 
-      /* DOM */
       const flowEl = document.getElementById("flow");
       const totalEl = document.getElementById("total");
       const volumeEl = document.getElementById("volume");
@@ -215,7 +200,6 @@
       firebase.initializeApp(firebaseConfig);
       const db = firebase.database();
 
-      /* ===== CHARTS ===== */
       const flowChart = new Chart(document.getElementById("flowChart"), {
         type: "line",
         data: {
@@ -242,7 +226,6 @@
         },
       });
 
-      /* ===== REALTIME ===== */
       db.ref("water").on("value", (snap) => {
         const d = snap.val();
         if (!d) return;
@@ -255,12 +238,10 @@
           ? d.weeklyUsage
           : [0, 0, 0, 0, 0, 0, 0];
 
-        /* TEXT */
         flowEl.innerText = flow.toFixed(2) + " L/Min";
         totalEl.innerText = total.toFixed(2) + " L";
         volumeEl.innerText = volume.toFixed(2) + " L";
 
-        /* SERVO STATUS */
         let status = "TERBUKA";
         let color = "#22c55e";
 
@@ -276,18 +257,15 @@
         servoStatus.style.color = color;
         servoSlider.value = servo;
 
-        /* LEAK */
         const bocor = flow > 0.1 && servo >= 90;
         leakText.innerText = bocor ? "BOCOR" : "AMAN";
         leakDot.style.background = bocor ? "#ff3b3b" : "#22c55e";
 
-        /* CIRCLE */
         const maxVolume = 6.5;
         const percent = Math.min((volume / maxVolume) * 100, 100);
         volumePercent.innerText = percent.toFixed(0) + "%";
         volumeCircle.style.background = `conic-gradient(#22c55e ${percent * 3.6}deg,#1e293b 0deg)`;
 
-        /* FLOW GRAPH */
         flowChart.data.labels.push("");
         flowChart.data.datasets[0].data.push(flow);
         if (flowChart.data.labels.length > 20) {
@@ -296,12 +274,28 @@
         }
         flowChart.update();
 
-        /* DAILY GRAPH */
         dailyChart.data.datasets[0].data = weekly;
         dailyChart.update();
+
+        if (bocor) {
+          if (Notification.permission === "granted") {
+            new Notification("Peringatan Kebocoran!", {
+              body: "Terjadi kebocoran pada sistem air, segera periksa!",
+              icon: "path/to/your/icon.png"
+            });
+          } else if (Notification.permission !== "denied") {
+            Notification.requestPermission().then(permission => {
+              if (permission === "granted") {
+                new Notification("Peringatan Kebocoran!", {
+                  body: "Terjadi kebocoran pada sistem air, segera periksa!",
+                  icon: "path/to/your/icon.png"
+                });
+              }
+            });
+          }
+        }
       });
 
-      /* ===== SLIDER CONTROL ===== */
       servoSlider.addEventListener("input", () => {
         db.ref("water/servoPos").set(parseInt(servoSlider.value));
       });
